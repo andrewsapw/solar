@@ -12,6 +12,7 @@ tqdm = "*"
 [dev-packages]
 black = "*"
 solrdumper = {extras = ["dev"], path = "."}
+pre-commit = "*"
 
 [requires]
 python_version = "3.10"

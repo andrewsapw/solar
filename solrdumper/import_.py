@@ -1,14 +1,11 @@
-import logging
-import time
-import datetime
 import json
+import logging
 import pathlib
+import time
 
 from tqdm import tqdm
-import aiohttp
 
 from solrdumper.base import ApiEngine
-
 
 logger = logging.getLogger("root")
 
@@ -61,7 +58,7 @@ class Importer(ApiEngine):
             params=params,
         )
         if res is None:
-            raise ValueError
+            raise ValueError(res)
 
     def import_json(self, path: str, batch_size: int = 50):
         data = self.load_json(path)
@@ -74,3 +71,28 @@ class Importer(ApiEngine):
             batch_docs = data["docs"][from_idx:to_idx]
             self.post_documents(docs=batch_docs)
             bar.update(batch_size)
+
+    def import_configs(self, configs_path: str | pathlib.Path):
+        import io
+        import zipfile
+
+        if isinstance(configs_path, str):
+            configs_path = pathlib.Path(configs_path)
+
+        upload_url = "/solr/admin/configs"
+        params = dict(action="UPLOAD", name=configs_path.name, overwrite="false")
+        with io.BytesIO() as f:
+            with zipfile.ZipFile(f, "w") as zf:
+                for path in configs_path.rglob("*"):
+                    rel_path = path.relative_to(configs_path)
+                    zf.write(path, rel_path)
+
+            f.seek(0)
+
+            resp = self.api_request(
+                method="POST", path=upload_url, params=params, data=f
+            )
+            if resp is None:
+                raise ValueError("Ошибка при отправке файла :(")
+
+            print(resp.json())

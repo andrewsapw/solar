@@ -1,3 +1,6 @@
 data
 *.egg-info
 build
+configs
+.vscode
+**/__pycache__

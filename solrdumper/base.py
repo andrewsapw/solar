@@ -1,9 +1,9 @@
-import logging
 import json
+import logging
 
 import requests
 
-requests.packages.urllib3.disable_warnings()
+requests.packages.urllib3.disable_warnings()  # type: ignore
 logger = logging.getLogger("root")
 
 
