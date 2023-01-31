@@ -30,8 +30,6 @@ def cli(ctx, username: str, password: str, collection: str, url: str):
 def import_data(ctx, filepath):
     click.echo(f"Importing data from {filepath}")
     ctx.ensure_object(dict)
-    if ctx.obj["collection"] is None:
-        raise ValueError("Параметр collection должен быть задан")
     importer = Importer(
         base_url=ctx.obj["url"],
         collection=ctx.obj["collection"],

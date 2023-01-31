@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import pathlib
+from typing import Optional
 
 from tqdm import tqdm
 
@@ -15,8 +16,8 @@ class Exporter(ApiEngine):
         self,
         base_url: str,
         collection: str,
-        username: str | None = None,
-        password: str | None = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         id_col: str = "id",
     ) -> None:
         super().__init__(base_url, collection, username, password, id_col)
@@ -51,7 +52,7 @@ class Exporter(ApiEngine):
         doc = resp["response"]["docs"]  # type: ignore
         return doc
 
-    def save_json(self, ids: list[str], path: str, batch_size: int = 50):
+    def save_json(self, ids: list[str], path: str, batch_size: int = 10):
         today = datetime.datetime.now()
         today_str = today.strftime("%d-%m-%Y")
         data = dict(

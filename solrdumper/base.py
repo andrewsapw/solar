@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Optional
 
 import requests
 
@@ -11,9 +12,9 @@ class ApiEngine:
     def __init__(
         self,
         base_url: str,
-        collection: str | None = None,
-        username: str | None = None,
-        password: str | None = None,
+        collection: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         id_col: str = "id",
     ) -> None:
         self.base_url = base_url
