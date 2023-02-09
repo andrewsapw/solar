@@ -23,41 +23,77 @@ class Exporter(ApiEngine):
     ) -> None:
         super().__init__(base_url, collection, username, password, id_col)
 
-    async def fetch_ids(self, query: str = "*:*"):
+    async def _fetch_ids(self, query: str = "*:*") -> Optional[List[str]]:
+        """Получение ID документов, представленных в коллекции
+
+        Args:
+            query (str, optional): query запрос в Solr. Позволяет фильтровать нужные ID
+                Defaults to "*:*".
+
+        Returns:
+            Optional[List[str]]: массив ID документов коллекции
+        """
         url_path = f"/solr/{self.collection}/export"
-        data = await self.api_request(
+        resp = await self.api_request(
+            method="GET",
             path=url_path,
             params={"q": query, "fl": self.id_col, "sort": f"{self.id_col} desc"},
         )
-        if data is None:
+        if resp is None:
             logger.error("Ошибка при получении ID документов")
             return
 
-        body = data["response"]  # type: ignore
-        num_found = body["numFound"]
+        content = await resp.text(encoding="UTF-8")
+        data = orjson.loads(content)
+
+        body = data["response"]
+        # num_found = body["numFound"]
         ids = [i["id"] for i in body["docs"]]
         return ids
 
-    async def get_documents(self, ids: List[str]):
-        # http://10.113.18.48:8983/solr/all/select?indent=true&q.op=OR&q=id%3Anpp_ev_196513
+    async def _get_documents(self, ids: List[str]) -> List[dict]:
+        """Получение документов по списку их ID
 
+        Args:
+            ids (List[str]): массив ID документов коллекции
+
+        Raises:
+            ValueError: Ошибка при получении документов
+
+        Returns:
+            List[dict]: массив документов
+        """
         query = "\n".join([f"{self.id_col}:{i}" for i in ids])
         url_path = f"/solr/{self.collection}/select"
         params = {"q": query, "q.op": "OR", "rows": len(ids)}
         resp = await self.api_request(path=url_path, params=params, method="GET")
+
         if resp is None:
             logger.error(f"Error fetching document {id} ({self.collection=})")
             raise ValueError("Ошибка при получении документов")
 
-        doc = resp["response"]["docs"]  # type: ignore
+        content = await resp.text(encoding="UTF-8")
+        data = orjson.loads(content)
+        doc = data["response"]["docs"]
         return doc
 
-    async def save_json(
+    async def _export_ids(
         self,
         ids: List[str],
         path: str,
         batch_size: int = 10,
-    ):
+    ) -> pathlib.Path:
+        """Сохраняет документы с нужными ID (`ids`) в путь `path`
+
+        Args:
+            ids (List[str]): массив ID документов коллекции
+            path (str): путь, в который запишется итоговый .json файл с документами
+            batch_size (int, optional): размер батча, с которым буду скачиваться документы из Solr
+                Defaults to 10.
+
+        Returns:
+            pathlib.Path: путь до итогового файла
+        """
         today = datetime.datetime.now()
         today_str = today.strftime("%d-%m-%Y")
         data = dict(
@@ -74,7 +110,7 @@ class Exporter(ApiEngine):
             to_idx = min(from_idx + batch_size, num_ids)
             batch_ids = ids[from_idx:to_idx]
 
-            docs = self.get_documents(ids=batch_ids)
+            docs = self._get_documents(ids=batch_ids)
             tasks.append(docs)
 
         for r in tqdm.asyncio.tqdm.as_completed(tasks):
@@ -91,17 +127,36 @@ class Exporter(ApiEngine):
 
         return filepath
 
-    async def export(self, path: str, query: str = "*:*"):
-        ids = await self.fetch_ids(query=query)
+    async def export_data(self, path: str, query: str = "*:*") -> pathlib.Path:
+        """Экспорт данных из Solr в заданный путь (`path`),
+        фильтруя по `query`
+
+        Args:
+            path (str): путь, в который запишется итоговый файл с данными
+            query (str, optional): query запрос в SOlr, с помощью которого соберутся ID документов
+                Defaults to "*:*".
+
+        Raises:
+            ValueError: Ошибка при получении индексов документов
+
+        Returns:
+            pathlib.Path: путь до итогового файла
+        """
+        ids = await self._fetch_ids(query=query)
         if ids is None:
             raise ValueError("Ошибка при получении индексов документов")
 
         print(f"Num found: {len(ids)}")
-        filepath = await self.save_json(ids=ids, path=path)
+        filepath = await self._export_ids(ids=ids, path=path)
 
         return filepath
 
     async def export_config(self, path: Union[str, pathlib.Path]):
+        """Экспорт конфигов из Solr
+
+        Args:
+            path (Union[str, pathlib.Path]): путь до папки, в которую запишутся конфиги
+        """
         if isinstance(path, str):
             path = pathlib.Path(path)
 
@@ -119,6 +174,7 @@ class Exporter(ApiEngine):
         await self._parse_tree(tree=tree, folder=path)
 
     async def _parse_tree(self, tree: list, folder: pathlib.Path):
+        """Рекурсивный парсинг дерева файлов Zookeeper"""
         for el in tree:
             if isinstance(el, list):
                 await self._parse_tree(el, folder=folder)
@@ -162,4 +218,4 @@ if __name__ == "__main__":
     )
     import asyncio
 
-    asyncio.run(exporter.export(path=r"C:\projects\solrdumper\data\0302"))
+    asyncio.run(exporter.export_data(path=r"C:\projects\solrdumper\data\0302"))

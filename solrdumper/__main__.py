@@ -50,7 +50,7 @@ async def import_data(ctx, filepath):
     )
     try:
         await importer.build_client()
-        await importer.import_json(path=filepath)
+        await importer.import_data(path=filepath)
     finally:
         await importer.close_client()
 
@@ -103,7 +103,7 @@ async def export_data(ctx, directory):
     )
     try:
         await exporter.build_client()
-        await exporter.export(path=directory)
+        await exporter.export_data(path=directory)
     finally:
         await exporter.close_client()
 

@@ -13,20 +13,15 @@ logger = logging.getLogger("root")
 
 
 class Importer(ApiEngine):
-    def __init__(
-        self,
-        base_url: str,
-        collection: Optional[str] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        id_col: str = "id",
-    ) -> None:
-        super().__init__(
-            base_url=base_url, username=username, password=password, id_col=id_col
-        )
-        self.collection = collection
+    """Класс, определяющий методы для работы с импортом данных (документов и конфигов)
+    в Solr
+    """
 
-    def load_json(self, path: str):
+    def _load_json(self, path: str):
+        """Загрузка json. Если поле коллекции не указано при создании
+        экземпляра класса - берется из .json файла
+        """
+
         with open(path, "r", encoding="UTF-8") as f:
             data = json.load(f)
 
@@ -34,7 +29,15 @@ class Importer(ApiEngine):
             self.collection = data["collection"]
         return data
 
-    async def post_documents(self, docs: List[dict]):
+    async def _post_documents(self, docs: List[dict]):
+        """Отправить документы (docs) в Solr.
+
+        Args:
+            docs (List[dict]): массив документов для отправки
+
+        Raises:
+            ValueError: ошибка при отправке документов
+        """
         curr_time = round(time.time() * 1000)
         for doc in docs:
             doc.pop("_version_", None)
@@ -62,12 +65,24 @@ class Importer(ApiEngine):
         if res is None:
             raise ValueError(res)
 
-    async def import_json(self, path: str, batch_size: int = 50):
-        data = self.load_json(path)
+    async def import_data(self, path: str, batch_size: int = 50):
+        """Импорт данных, хранящихся в виде `json`
+
+        Args:
+            path (str): путь до `.json` файла с данными
+            batch_size (int, optional): Размер батча данных при импорте.
+                Defaults to 50.
+        """
+        data = self._load_json(path)
 
         print("Запуск импорта с параметрами:")
-        print(f"Импорт из: [bold]{path}[/]")
-        print(f"Размер батча: [bold]{batch_size}[/]")
+        print(f"Импорт из: [bold]{path}")
+        print(f"Размер батча: [bold]{batch_size}")
+
+        confirm = input("Всё верно? (y/n)").lower() == "y"
+        if not confirm:
+            print("[red]Отмена...")
+            return
 
         num_docs = len(data["docs"])
 
@@ -76,7 +91,7 @@ class Importer(ApiEngine):
         for from_idx in trange(0, num_docs, batch_size):
             to_idx = min(from_idx + batch_size, num_docs)
             batch_docs = data["docs"][from_idx:to_idx]
-            await self.post_documents(docs=batch_docs)
+            await self._post_documents(docs=batch_docs)
             request_ts += 1.0 / RPS
             now = time.monotonic()
             if now < request_ts:
@@ -88,6 +103,19 @@ class Importer(ApiEngine):
         overwrite: bool = False,
         name: Optional[str] = None,
     ):
+        """Импорт конфига
+
+        Args:
+            configs_path (Union[str, pathlib.Path]): папка в которой находятся файлы конфига
+            overwrite (bool, optional): нужно ли переписывать уже существующий конфиг с таким именем
+                Defaults to False.
+            name (Optional[str], optional): имя конфига для создания.
+                Если None - будет использовано название папки
+                Defaults to None.
+
+        Raises:
+            ValueError: Ошибка импорта конфига
+        """
         import io
         import zipfile
 
