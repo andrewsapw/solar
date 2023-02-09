@@ -1,10 +1,10 @@
-import json
 import logging
 from typing import Optional
 
-import requests
+import aiohttp
+import orjson
 
-requests.packages.urllib3.disable_warnings()  # type: ignore
+# requests.packages.urllib3.disable_warnings()  # type: ignore
 logger = logging.getLogger("root")
 
 
@@ -22,29 +22,50 @@ class ApiEngine:
         self.username = username
         self.password = password
         self.id_col = id_col
+        self.client = None
 
-        self.session = requests.Session()
-        if password is not None and username is not None:
-            self.session.auth = (username, password)
+    async def build_client(self):
+        if self.password is not None and self.username is not None:
+            auth = aiohttp.BasicAuth(login=self.username, password=self.password)
+        else:
+            auth = None
 
-    def api_request(self, path: str, params: dict = {}, method: str = "GET", **kwargs):
-        resp = self.session.request(
+        self.client: Optional[aiohttp.ClientSession] = aiohttp.ClientSession(
+            auth=auth, connector=aiohttp.TCPConnector(verify_ssl=False)
+        )
+
+    async def close_client(self):
+        if self.client is None:
+            return
+
+        await self.client.close()
+
+    async def api_request(
+        self,
+        *,
+        path: str,
+        params: dict = {},
+        method: str = "GET",
+        **kwargs,
+    ):
+        if self.client is None:
+            raise ValueError("Сначала нужно вызвать .build_client()")
+
+        async with self.client.request(
             method=method,
             url=self.base_url + path,
             params=params,
-            verify=False,
             **kwargs,
-        )
+        ) as resp:
+            if resp.status != 200:
+                text = resp.text
+                logger.error(f"{method} - {resp.url} - {text}")
+                logger.error(resp.text)
+                return None
 
-        if resp.status_code != 200:
-            text = resp.text
-            logger.error(f"{method} - {resp.url} - {text}")
-            logger.error(resp.reason)
-            return None
-
-        if method.lower() == "get":
-            content = resp.text
-            data = json.loads(content)
-            return data
-        else:
-            return resp
+            if method.lower() == "get":
+                content = await resp.text(encoding="UTF-8")
+                data = orjson.loads(content)
+                return data
+            else:
+                return resp

@@ -1,7 +1,19 @@
+import asyncio
+from functools import wraps
+
 import click
+from rich import print
 
 from solrdumper.export import Exporter
 from solrdumper.import_ import Importer
+
+
+def coro(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return asyncio.get_event_loop().run_until_complete(f(*args, **kwargs))
+
+    return wrapper
 
 
 @click.group()
@@ -21,14 +33,14 @@ def cli(ctx, username: str, password: str, collection: str, url: str):
     ctx.obj["password"] = password
     ctx.obj["username"] = username
     ctx.obj["collection"] = collection
-    print(ctx.obj)
 
 
 @cli.command(name="import")
 @click.argument("filepath")
 @click.pass_context
-def import_data(ctx, filepath):
-    click.echo(f"Importing data from {filepath}")
+@coro
+async def import_data(ctx, filepath):
+    print(f"Importing data from [bold]{filepath}[/bold]")
     ctx.ensure_object(dict)
     importer = Importer(
         base_url=ctx.obj["url"],
@@ -36,15 +48,26 @@ def import_data(ctx, filepath):
         username=ctx.obj["username"],
         password=ctx.obj["password"],
     )
-
-    importer.import_json(path=filepath)
+    try:
+        await importer.build_client()
+        await importer.import_json(path=filepath)
+    finally:
+        await importer.close_client()
 
 
 @cli.command(name="import-config")
 @click.argument("directory")
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Перезаписать, если конфиг существует",
+)
 @click.pass_context
-def import_config(ctx, directory):
-    click.echo(f"Importing config from {directory}")
+@click.option("--name", default=None)
+@coro
+async def import_config(ctx, directory, overwrite, name):
     ctx.ensure_object(dict)
     importer = Importer(
         base_url=ctx.obj["url"],
@@ -52,33 +75,45 @@ def import_config(ctx, directory):
         username=ctx.obj["username"],
         password=ctx.obj["password"],
     )
-
-    importer.import_configs(configs_path=directory)
+    try:
+        await importer.build_client()
+        await importer.import_configs(
+            configs_path=directory, overwrite=overwrite, name=name
+        )
+    finally:
+        await importer.close_client()
 
 
 @cli.command(name="export")
 @click.argument("directory")
 @click.pass_context
-def export_data(ctx, directory):
-    click.echo(f"Exporting data to {directory}")
+@coro
+async def export_data(ctx, directory):
+    print(f"Экспорт данных в [bold]{directory}[/bold]")
     ctx.ensure_object(dict)
     if ctx.obj["collection"] is None:
-        raise ValueError("Параметр collection должен быть задан")
+        print("[bold red]Параметр collection должен быть задан")
+        return
+
     exporter = Exporter(
         base_url=ctx.obj["url"],
         collection=ctx.obj["collection"],
         username=ctx.obj["username"],
         password=ctx.obj["password"],
     )
-
-    exporter.export(path=directory)
+    try:
+        await exporter.build_client()
+        await exporter.export(path=directory)
+    finally:
+        await exporter.close_client()
 
 
 @cli.command(name="export-configs")
 @click.argument("directory")
 @click.pass_context
-def export_configs(ctx, directory):
-    click.echo(f"Exporting data to {directory}")
+@coro
+async def export_configs(ctx, directory):
+    print(f"Экспорт конфигов в [bold]{directory}[/bold]")
     ctx.ensure_object(dict)
     exporter = Exporter(
         base_url=ctx.obj["url"],
@@ -86,8 +121,11 @@ def export_configs(ctx, directory):
         username=ctx.obj["username"],
         password=ctx.obj["password"],
     )
-
-    exporter.export_config(path=directory)
+    try:
+        await exporter.build_client()
+        await exporter.export_config(path=directory)
+    finally:
+        await exporter.close_client()
 
 
 if __name__ == "__main__":

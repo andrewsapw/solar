@@ -2,8 +2,10 @@ import json
 import logging
 import pathlib
 import time
+from typing import List, Optional, Union
 
-from tqdm import tqdm
+from rich import print
+from tqdm import trange
 
 from solrdumper.base import ApiEngine
 
@@ -14,9 +16,9 @@ class Importer(ApiEngine):
     def __init__(
         self,
         base_url: str,
-        collection: str | None = None,
-        username: str | None = None,
-        password: str | None = None,
+        collection: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         id_col: str = "id",
     ) -> None:
         super().__init__(
@@ -32,7 +34,7 @@ class Importer(ApiEngine):
             self.collection = data["collection"]
         return data
 
-    def post_documents(self, docs: list[dict]):
+    async def post_documents(self, docs: List[dict]):
         curr_time = round(time.time() * 1000)
         for doc in docs:
             doc.pop("_version_", None)
@@ -50,7 +52,7 @@ class Importer(ApiEngine):
         }
 
         doc_binary = json.dumps(docs, ensure_ascii=False).encode("utf-8")
-        res = self.api_request(
+        res = await self.api_request(
             method="POST",
             path=url_path,
             data=doc_binary,
@@ -60,27 +62,54 @@ class Importer(ApiEngine):
         if res is None:
             raise ValueError(res)
 
-    def import_json(self, path: str, batch_size: int = 50):
+    async def import_json(self, path: str, batch_size: int = 50):
         data = self.load_json(path)
-        logger.info("Importing docs...")
+
+        print("Запуск импорта с параметрами:")
+        print(f"Импорт из: [bold]{path}[/]")
+        print(f"Размер батча: [bold]{batch_size}[/]")
 
         num_docs = len(data["docs"])
-        bar = tqdm(total=num_docs)
-        for from_idx in range(0, num_docs, batch_size):
+
+        RPS = 10
+        request_ts = time.monotonic()
+        for from_idx in trange(0, num_docs, batch_size):
             to_idx = min(from_idx + batch_size, num_docs)
             batch_docs = data["docs"][from_idx:to_idx]
-            self.post_documents(docs=batch_docs)
-            bar.update(batch_size)
+            await self.post_documents(docs=batch_docs)
+            request_ts += 1.0 / RPS
+            now = time.monotonic()
+            if now < request_ts:
+                time.sleep(request_ts - now)
 
-    def import_configs(self, configs_path: str | pathlib.Path):
+    async def import_configs(
+        self,
+        configs_path: Union[str, pathlib.Path],
+        overwrite: bool = False,
+        name: Optional[str] = None,
+    ):
         import io
         import zipfile
+
+        overwrite_str = "true" if overwrite else "false"
 
         if isinstance(configs_path, str):
             configs_path = pathlib.Path(configs_path)
 
+        if name is None:
+            name = configs_path.name
+
+        print("Параметры импорта:")
+        print(f"Конфиг: [bold]{name}[/bold]")
+        print(f"Перезапись: [bold]{overwrite_str}[/bold]")
+        print(f"Путь импорта: [bold]{configs_path.absolute().__str__()}[/bold]")
+
+        confirm = input("Все верно? (y/n)")
+        if confirm.lower() != "y":
+            return
+
         upload_url = "/solr/admin/configs"
-        params = dict(action="UPLOAD", name=configs_path.name, overwrite="false")
+        params = dict(action="UPLOAD", name=name, overwrite=overwrite_str)
         with io.BytesIO() as f:
             with zipfile.ZipFile(f, "w") as zf:
                 for path in configs_path.rglob("*"):
@@ -89,10 +118,8 @@ class Importer(ApiEngine):
 
             f.seek(0)
 
-            resp = self.api_request(
+            resp = await self.api_request(
                 method="POST", path=upload_url, params=params, data=f
             )
             if resp is None:
                 raise ValueError("Ошибка при отправке файла :(")
-
-            print(resp.json())

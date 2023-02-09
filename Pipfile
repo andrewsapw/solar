@@ -4,10 +4,14 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-aiohttp = "*"
 requests = "*"
 async-timeout = ">=4"
 tqdm = "*"
+rich = "*"
+httpx = "*"
+aiohttp = {extras = ["speedups"], version = "*"}
+orjson = "*"
+click = "*"
 
 [dev-packages]
 black = "*"
@@ -15,7 +19,7 @@ solrdumper = {extras = ["dev"], path = "."}
 pre-commit = "*"
 
 [requires]
-python_version = "3.10"
+python_version = "3.8"
 
 [pipenv]
 allow_prereleases = true
