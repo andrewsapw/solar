@@ -59,7 +59,7 @@ class ApiEngine:
         params: dict = {},
         method: str = "GET",
         **kwargs,
-    ) -> Optional[aiohttp.ClientResponse]:
+    ) -> Optional[str]:
         """Создание запроса к API Solr
 
         Args:
@@ -85,10 +85,13 @@ class ApiEngine:
             params=params,
             **kwargs,
         ) as resp:
-            if resp.ok:
+            if resp.status == 401:
+                raise ValueError("Ошибка при авторизации :(")
+            
+            if resp.status != 200:
                 text = resp.text
                 logger.error(f"{method} - {resp.url} - {text}")
                 logger.error(resp.text)
                 return None
 
-            return resp
+            return await resp.text(encoding="UTF-8")

@@ -17,6 +17,7 @@ def coro(f):
 
 
 @click.group()
+@click.option("-q", "--query", help="Solr query", default="*:*")
 @click.option("-u", "--username", help="Solr username", default=None)
 @click.option(
     "-p",
@@ -27,8 +28,9 @@ def coro(f):
 @click.argument("URL", nargs=1)
 @click.option("-c", "--collection", default=None)
 @click.pass_context
-def cli(ctx, username: str, password: str, collection: str, url: str):
+def cli(ctx, query: str, username: str, password: str, collection: str, url: str):
     ctx.ensure_object(dict)
+    ctx.obj["query"] = query
     ctx.obj["url"] = url
     ctx.obj["password"] = password
     ctx.obj["username"] = username
@@ -103,7 +105,7 @@ async def export_data(ctx, directory):
     )
     try:
         await exporter.build_client()
-        await exporter.export_data(path=directory)
+        await exporter.export_data(path=directory, query=ctx.obj["query"])
     finally:
         await exporter.close_client()
 

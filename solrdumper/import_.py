@@ -78,6 +78,7 @@ class Importer(ApiEngine):
         print("Запуск импорта с параметрами:")
         print(f"Импорт из: [bold]{path}")
         print(f"Размер батча: [bold]{batch_size}")
+        print(f"Коллекция: [bold]{self.collection}")
 
         confirm = input("Всё верно? (y/n)").lower() == "y"
         if not confirm:
@@ -134,7 +135,10 @@ class Importer(ApiEngine):
 
         confirm = input("Все верно? (y/n)")
         if confirm.lower() != "y":
+            print("[red]Отмена...")
             return
+        
+        print("Запуск импорта...")
 
         upload_url = "/solr/admin/configs"
         params = dict(action="UPLOAD", name=name, overwrite=overwrite_str)
@@ -151,3 +155,5 @@ class Importer(ApiEngine):
             )
             if resp is None:
                 raise ValueError("Ошибка при отправке файла :(")
+        
+        print("[bold green]Импорт успешно завершен!")

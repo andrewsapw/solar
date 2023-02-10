@@ -34,16 +34,15 @@ class Exporter(ApiEngine):
             Optional[List[str]]: массив ID документов коллекции
         """
         url_path = f"/solr/{self.collection}/export"
-        resp = await self.api_request(
+        content = await self.api_request(
             method="GET",
             path=url_path,
             params={"q": query, "fl": self.id_col, "sort": f"{self.id_col} desc"},
         )
-        if resp is None:
+        if content is None:
             logger.error("Ошибка при получении ID документов")
             return
 
-        content = await resp.text(encoding="UTF-8")
         data = orjson.loads(content)
 
         body = data["response"]
@@ -66,13 +65,12 @@ class Exporter(ApiEngine):
         query = "\n".join([f"{self.id_col}:{i}" for i in ids])
         url_path = f"/solr/{self.collection}/select"
         params = {"q": query, "q.op": "OR", "rows": len(ids)}
-        resp = await self.api_request(path=url_path, params=params, method="GET")
+        content = await self.api_request(path=url_path, params=params, method="GET")
 
-        if resp is None:
+        if content is None:
             logger.error(f"Error fetching document {id} ({self.collection=})")
             raise ValueError("Ошибка при получении документов")
 
-        content = await resp.text(encoding="UTF-8")
         data = orjson.loads(content)
         doc = data["response"]["docs"]
         return doc
