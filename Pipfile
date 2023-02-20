@@ -12,6 +12,8 @@ httpx = "*"
 aiohttp = "3.8.3"
 orjson = "*"
 click = "*"
+more-itertools = "*"
+networkx = {extras = ["default"], version = "*"}
 
 [dev-packages]
 black = "*"
