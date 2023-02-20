@@ -5,7 +5,8 @@ import pathlib
 from typing import List, Optional, Union
 
 import orjson
-import tqdm.asyncio
+from rich import print
+from rich.progress import Progress
 
 from solrdumper.base import ApiEngine
 
@@ -23,34 +24,9 @@ class Exporter(ApiEngine):
     ) -> None:
         super().__init__(base_url, collection, username, password, id_col)
 
-    async def _fetch_ids(self, query: str = "*:*") -> Optional[List[str]]:
-        """Получение ID документов, представленных в коллекции
-
-        Args:
-            query (str, optional): query запрос в Solr. Позволяет фильтровать нужные ID
-                Defaults to "*:*".
-
-        Returns:
-            Optional[List[str]]: массив ID документов коллекции
-        """
-        url_path = f"/solr/{self.collection}/export"
-        content = await self.api_request(
-            method="GET",
-            path=url_path,
-            params={"q": query, "fl": self.id_col, "sort": f"{self.id_col} desc"},
-        )
-        if content is None:
-            logger.error("Ошибка при получении ID документов")
-            return
-
-        data = orjson.loads(content)
-
-        body = data["response"]
-        # num_found = body["numFound"]
-        ids = [i["id"] for i in body["docs"]]
-        return ids
-
-    async def _get_documents(self, ids: List[str]) -> List[dict]:
+    async def _get_documents(
+        self, query: str, start_row: int, rows: int, nested: bool
+    ) -> List[dict]:
         """Получение документов по списку их ID
 
         Args:
@@ -62,24 +38,33 @@ class Exporter(ApiEngine):
         Returns:
             List[dict]: массив документов
         """
-        query = "\n".join([f"{self.id_col}:{i}" for i in ids])
         url_path = f"/solr/{self.collection}/select"
-        params = {"q": query, "q.op": "OR", "rows": len(ids)}
+        params = {
+            "q": query,
+            "q.op": "OR",
+            "start": start_row,
+            "rows": rows,
+        }
+        if nested:
+            params["fl"] = "*, [child limit=-1]"
+
         content = await self.api_request(path=url_path, params=params, method="GET")
 
         if content is None:
             logger.error(f"Error fetching document {id} ({self.collection=})")
             raise ValueError("Ошибка при получении документов")
 
-        data = orjson.loads(content)
+        data = orjson.loads(content)  # type: ignore
         doc = data["response"]["docs"]
         return doc
 
     async def _export_ids(
         self,
+        query: str,
         ids: List[str],
         path: str,
-        batch_size: int = 10,
+        nested: bool,
+        batch_size: int = 100,
     ) -> pathlib.Path:
         """Сохраняет документы с нужными ID (`ids`) в путь `path`
 
@@ -103,17 +88,20 @@ class Exporter(ApiEngine):
         num_ids = len(ids)
 
         logger.info("Scrapping docs...")
-        tasks = []
-        for from_idx in range(0, num_ids, batch_size):
-            to_idx = min(from_idx + batch_size, num_ids)
-            batch_ids = ids[from_idx:to_idx]
+        with Progress() as progress:
+            task = progress.add_task("Скачивание...", total=num_ids)
+            for from_idx in range(0, num_ids, batch_size):
+                docs = await self._get_documents(
+                    start_row=from_idx, rows=batch_size, query=query, nested=nested
+                )
+                data["docs"] += docs
+                progress.update(task, advance=batch_size)
 
-            docs = self._get_documents(ids=batch_ids)
-            tasks.append(docs)
+            # tasks.append(docs)
 
-        for r in tqdm.asyncio.tqdm.as_completed(tasks):
-            batch_data = await r
-            data["docs"] += batch_data
+        # for r in tqdm.asyncio.tqdm.as_completed(tasks):
+        #     batch_data = await r
+        #     data["docs"] += batch_data
 
         file_directory = pathlib.Path(path)
         if not file_directory.exists():
@@ -121,11 +109,13 @@ class Exporter(ApiEngine):
 
         filepath = file_directory / f"{self.collection}_{today_str}.json"
         with open(filepath, "w", encoding="UTF-8") as f:
-            f.write(orjson.dumps(data).decode("utf-8"))
+            f.write(orjson.dumps(data).decode("utf-8"))  # type: ignore
 
         return filepath
 
-    async def export_data(self, path: str, query: str = "*:*") -> pathlib.Path:
+    async def export_data(
+        self, path: str, query: str = "*:*", nested: bool = False
+    ) -> pathlib.Path:
         """Экспорт данных из Solr в заданный путь (`path`),
         фильтруя по `query`
 
@@ -144,8 +134,10 @@ class Exporter(ApiEngine):
         if ids is None:
             raise ValueError("Ошибка при получении индексов документов")
 
-        print(f"Num found: {len(ids)}")
-        filepath = await self._export_ids(ids=ids, path=path)
+        print(f"Количество документов для экспорта: {len(ids)}")
+        filepath = await self._export_ids(
+            ids=ids, path=path, query=query, nested=nested
+        )
 
         return filepath
 
@@ -199,7 +191,7 @@ class Exporter(ApiEngine):
                     )
 
                 assert isinstance(resp, dict)
-                content = resp["znode"]["data"]
+                content: str = resp["znode"]["data"]  # type: ignore
                 self._write_file(path=folder / filename, content=content)
             elif isinstance(el, str):
                 continue

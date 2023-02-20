@@ -1,7 +1,8 @@
 import logging
-from typing import Optional
+from typing import List, Optional
 
 import aiohttp
+import orjson
 
 # requests.packages.urllib3.disable_warnings()  # type: ignore
 logger = logging.getLogger("root")
@@ -52,6 +53,33 @@ class ApiEngine:
 
         await self.client.close()
 
+    async def _fetch_ids(self, query: str = "*:*") -> Optional[List[str]]:
+        """Получение ID документов, представленных в коллекции
+
+        Args:
+            query (str, optional): query запрос в Solr. Позволяет фильтровать нужные ID
+                Defaults to "*:*".
+
+        Returns:
+            Optional[List[str]]: массив ID документов коллекции
+        """
+        url_path = f"/solr/{self.collection}/export"
+        content = await self.api_request(
+            method="GET",
+            path=url_path,
+            params={"q": query, "fl": self.id_col, "sort": f"{self.id_col} desc"},
+        )
+        if content is None:
+            logger.error("Ошибка при получении ID документов")
+            return
+
+        data = orjson.loads(content)
+
+        body = data["response"]
+        # num_found = body["numFound"]
+        ids = [i["id"] for i in body["docs"]]
+        return ids
+
     async def api_request(
         self,
         *,
@@ -87,11 +115,14 @@ class ApiEngine:
         ) as resp:
             if resp.status == 401:
                 raise ValueError("Ошибка при авторизации :(")
-            
+
             if resp.status != 200:
-                text = resp.text
+                text = await resp.text()
                 logger.error(f"{method} - {resp.url} - {text}")
-                logger.error(resp.text)
                 return None
 
-            return await resp.text(encoding="UTF-8")
+            try:
+                return await resp.text(encoding="UTF-8")
+            except UnicodeDecodeError as e:
+                print("Ошибка при раскодировке ответа :( {e}")
+                return None

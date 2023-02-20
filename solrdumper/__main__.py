@@ -88,9 +88,16 @@ async def import_config(ctx, directory, overwrite, name):
 
 @cli.command(name="export")
 @click.argument("directory")
+@click.option(
+    "--nested",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Загрузить вложенные документы",
+)
 @click.pass_context
 @coro
-async def export_data(ctx, directory):
+async def export_data(ctx, directory, nested: bool):
     print(f"Экспорт данных в [bold]{directory}[/bold]")
     ctx.ensure_object(dict)
     if ctx.obj["collection"] is None:
@@ -131,4 +138,4 @@ async def export_configs(ctx, directory):
 
 
 if __name__ == "__main__":
-    cli()
+    cli()  # type: ignore
