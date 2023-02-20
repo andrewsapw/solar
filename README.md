@@ -1,3 +1,15 @@
+
+# Устновка
+
+> Перед началом установки, надо установить `pipenv`: https://pipenv.pypa.io/en/latest/install/
+
+```bash
+$ pipenv install
+$ pipenv shell
+$ pip install .
+```
+
+# Примеры использования
 # Export data
 ```
 python -m solrdumper http://10.113.18.48:8983 -c askid export .
