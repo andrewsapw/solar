@@ -159,6 +159,22 @@ class Importer(ApiEngine):
 
                 progress.update(task, advance=batch_size)
 
+    async def _remove_config(self, name: str):
+        url = f"/api/cluster/configs/{name}?omitHeader=true"
+        r = await self.api_request(method="DELETE", path=url)
+        if r is None:
+            raise ValueError("Ошибка во время удаления конфига :(")
+
+        print(r)
+
+    async def _remove_config(self, name: str):
+        url = f"/api/cluster/configs/{name}?omitHeader=true"
+        r = await self.api_request(method="DELETE", path=url)
+        if r is None:
+            raise ValueError("Ошибка во время удаления конфига :(")
+
+        print(r)
+
     async def import_configs(
         self,
         configs_path: Union[str, pathlib.Path],
@@ -192,7 +208,7 @@ class Importer(ApiEngine):
 
         print("Параметры импорта:")
         print(f"Конфиг: [bold]{name}[/bold]")
-        print(f"Перезапись: [bold]{overwrite_str}[/bold]")
+        print(f"Перезапись: [bold]{overwrite}[/bold]")
         print(f"Путь импорта: [bold]{configs_path.absolute().__str__()}[/bold]")
 
         confirm = input("Все верно? (y/n)")
@@ -202,6 +218,11 @@ class Importer(ApiEngine):
 
         print("Запуск импорта...")
 
+        if overwrite:
+            print("Удаление старого конфига...")
+            await self._remove_config(name=name)
+
+        print("Загрузка нового...")
         upload_url = "/solr/admin/configs"
         params = dict(
             action="UPLOAD", name=name, overwrite=overwrite_str, cleanup=cleanup_str

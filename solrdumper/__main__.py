@@ -37,6 +37,29 @@ def cli(ctx, query: str, username: str, password: str, collection: str, url: str
     ctx.obj["collection"] = collection
 
 
+@cli.command(name="remove-config")
+@click.argument("name")
+@click.pass_context
+@coro
+async def remove_config(ctx, name):
+    ctx.ensure_object(dict)
+    importer = Importer(
+        base_url=ctx.obj["url"],
+        collection=ctx.obj["collection"],
+        username=ctx.obj["username"],
+        password=ctx.obj["password"],
+    )
+    try:
+        confirm = input(f"Вы точно хотите удалить конфиг {name}").lower() == "y"
+        if not confirm:
+            return
+
+        await importer.build_client()
+        await importer._remove_config(name=name)
+    finally:
+        await importer.close_client()
+
+
 @cli.command(name="import")
 @click.argument("filepath")
 @click.pass_context
