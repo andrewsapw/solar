@@ -135,6 +135,7 @@ class Exporter(ApiEngine):
             raise ValueError("Ошибка при получении индексов документов")
 
         print(f"Количество документов для экспорта: {len(ids)}")
+        print(f"Экспорт вложенных документов: {nested}")
         filepath = await self._export_ids(
             ids=ids, path=path, query=query, nested=nested
         )

@@ -135,7 +135,9 @@ async def export_data(ctx, directory, nested: bool):
     )
     try:
         await exporter.build_client()
-        await exporter.export_data(path=directory, query=ctx.obj["query"])
+        await exporter.export_data(
+            path=directory, query=ctx.obj["query"], nested=nested
+        )
     finally:
         await exporter.close_client()
 
