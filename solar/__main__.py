@@ -1,11 +1,12 @@
 import asyncio
+import urllib.parse
 from functools import wraps
 
 import click
 from rich import print
 
-from solrdumper.export import Exporter
-from solrdumper.import_ import Importer
+from solar.export import Exporter
+from solar.import_ import Importer
 
 
 def coro(f):
@@ -18,23 +19,26 @@ def coro(f):
 
 @click.group()
 @click.option("-q", "--query", help="Solr query", default="*:*")
-@click.option("-u", "--username", help="Solr username", default=None)
-@click.option(
-    "-p",
-    "--password",
-    help="Solr user password",
-    default=None,
-)
 @click.argument("URL", nargs=1)
 @click.option("-c", "--collection", default=None)
 @click.pass_context
-def cli(ctx, query: str, username: str, password: str, collection: str, url: str):
+def cli(ctx, query: str, collection: str, url: str):
+    url_parsed = urllib.parse.urlparse(url)
+    if url_parsed.scheme not in ("http", "https"):
+        print(f"[red]Unknown scheme {url_parsed.scheme}")
+        return
+
+    username = url_parsed.username
+    password = url_parsed.password
+
+    url_str = f"{url_parsed.scheme}://{url_parsed.hostname}{url_parsed.path}"
+
     ctx.ensure_object(dict)
     ctx.obj["query"] = query
-    ctx.obj["url"] = url
-    ctx.obj["password"] = password
-    ctx.obj["username"] = username
+    ctx.obj["url"] = url_str
     ctx.obj["collection"] = collection
+    ctx.obj["username"] = username
+    ctx.obj["password"] = password
 
 
 @cli.command(name="remove-config")
@@ -62,9 +66,10 @@ async def remove_config(ctx, name):
 
 @cli.command(name="import")
 @click.argument("filepath")
+@click.option("--batch", default=50)
 @click.pass_context
 @coro
-async def import_data(ctx, filepath):
+async def import_data(ctx, filepath, batch):
     print(f"Importing data from [bold]{filepath}[/bold]")
     ctx.ensure_object(dict)
     importer = Importer(
@@ -75,7 +80,7 @@ async def import_data(ctx, filepath):
     )
     try:
         await importer.build_client()
-        await importer.import_data(path=filepath)
+        await importer.import_data(path=filepath, batch_size=batch)
     finally:
         await importer.close_client()
 

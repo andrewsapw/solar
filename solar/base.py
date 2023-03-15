@@ -9,11 +9,7 @@ logger = logging.getLogger("root")
 
 
 class ApiEngine:
-    """Базовый класс для работы с API Solr
-    Предоставляет:
-    - метод построение запроса: `api_request`
-    -
-    """
+    """Base class for working with API Solr"""
 
     def __init__(
         self,
@@ -32,8 +28,8 @@ class ApiEngine:
 
     async def build_client(self):
         """
-        Инициализация aiohttp клиента.
-        Должно вызываться перед использованием `api_request`
+        aiohttp client initialization.
+        Have to used before calling .api_request
         """
 
         if self.password is not None and self.username is not None:
@@ -46,7 +42,7 @@ class ApiEngine:
         )
 
     async def close_client(self):
-        """Закрытие aiohttp клиента и освобождение ресурсов"""
+        """Close aiohttp client and free resources"""
 
         if self.client is None:
             return
@@ -54,14 +50,14 @@ class ApiEngine:
         await self.client.close()
 
     async def _fetch_ids(self, query: str = "*:*") -> Optional[List[str]]:
-        """Получение ID документов, представленных в коллекции
+        """Fetch collection documents IDs
 
         Args:
-            query (str, optional): query запрос в Solr. Позволяет фильтровать нужные ID
+            query (str, optional): `query` parameter for Solr. Useful for filtering docs
                 Defaults to "*:*".
 
         Returns:
-            Optional[List[str]]: массив ID документов коллекции
+            Optional[List[str]]: array of documents IDs
         """
         url_path = f"/solr/{self.collection}/export"
         content = await self.api_request(
@@ -70,13 +66,11 @@ class ApiEngine:
             params={"q": query, "fl": self.id_col, "sort": f"{self.id_col} desc"},
         )
         if content is None:
-            logger.error("Ошибка при получении ID документов")
             return
 
         data = orjson.loads(content)
 
         body = data["response"]
-        # num_found = body["numFound"]
         ids = [i["id"] for i in body["docs"]]
         return ids
 
@@ -88,24 +82,24 @@ class ApiEngine:
         method: str = "GET",
         **kwargs,
     ) -> Optional[str]:
-        """Создание запроса к API Solr
+        """Create request to Solr API
 
         Args:
             path (str): URL path
-            params (dict, optional): query параметры запроса.
+            params (dict, optional): query params.
                 Defaults to {}.
-            method (str, optional): метод запроса (GET, POST, etc...).
+            method (str, optional): request method (GET, POST, etc...).
                 Defaults to "GET".
 
         Raises:
-            ValueError: Не вызван .build_client() перед запросом
+            ValueError: .build_client() is not called before request
 
         Returns:
-            Optional[aiohttp.ClientResponse]: ответ сервера.
-                Если None - получен статус кода >= 400
+            Optional[aiohttp.ClientResponse]: Solr response.
+                If None - response status code is >= 400
         """
         if self.client is None:
-            raise ValueError("Сначала нужно вызвать .build_client()")
+            raise ValueError(".build_client() have to be called before request")
 
         async with self.client.request(
             method=method,
@@ -114,7 +108,7 @@ class ApiEngine:
             **kwargs,
         ) as resp:
             if resp.status == 401:
-                raise ValueError("Ошибка при авторизации :(")
+                raise ValueError("Auth error :(")
 
             if resp.status != 200:
                 text = await resp.text()
@@ -124,5 +118,5 @@ class ApiEngine:
             try:
                 return await resp.text(encoding="UTF-8")
             except UnicodeDecodeError as e:
-                print("Ошибка при раскодировке ответа :( {e}")
+                print("Can't decode answer :( {e}")
                 return None

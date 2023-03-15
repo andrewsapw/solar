@@ -14,7 +14,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from solrdumper.base import ApiEngine
+from solar.base import ApiEngine
 
 logger = logging.getLogger("root")
 
@@ -28,14 +28,10 @@ def recursive_field_remove(doc: dict, field: str):
 
 
 class Importer(ApiEngine):
-    """Класс, определяющий методы для работы с импортом данных (документов и конфигов)
-    в Solr
-    """
+    """Class with *import* methods"""
 
     def _load_json(self, path: str):
-        """Загрузка json. Если поле коллекции не указано при создании
-        экземпляра класса - берется из .json файла
-        """
+        """Load source `.json` file"""
 
         with open(path, "r", encoding="UTF-8") as f:
             data = json.load(f)
@@ -45,20 +41,18 @@ class Importer(ApiEngine):
         return data
 
     async def _post_documents(self, docs: List[dict]):
-        """Отправить документы (docs) в Solr.
+        """Send documents to Solr.
 
         Args:
-            docs (List[dict]): массив документов для отправки
+            docs (List[dict]): array of docs
 
         Raises:
-            ValueError: ошибка при отправке документов
+            ValueError: error sending docs
         """
         curr_time = round(time.time() * 1000)
         for doc in docs:
             doc.pop("_version_", None)
             doc = recursive_field_remove(doc, "_root_")
-            # doc = recursive_field_remove(doc, "_version_")
-            # print(doc)
 
         url_path = f"/solr/{self.collection}/update"
         headers = {
@@ -86,32 +80,29 @@ class Importer(ApiEngine):
     async def import_data(
         self, path: str, batch_size: int = 50, overwrite: bool = True
     ):
-        """Импорт данных, хранящихся в виде `json`
+        """Import data, saved as `.json` file
 
         Args:
-            path (str): путь до `.json` файла с данными
-            batch_size (int, optional): Размер батча данных при импорте.
+            path (str): source `.json` path
+            batch_size (int, optional): how many documents will be sent by one request.
                 Defaults to 50.
         """
         data = self._load_json(path)
         docs = data["docs"]
         docs_ids = set([i[self.id_col] for i in docs])
 
-        print(f"Количество докуметов: {len(docs_ids)}")
+        print(f"Number of docs: {len(docs_ids)}")
         if not overwrite:
-            num_before = len(docs)
-            print("Получения ID существующих документов...")
+            print("Fetching IDs of collection documents...")
             existing_ids = await self._fetch_ids(query="*:*")
             if existing_ids is None:
-                raise ValueError("Ошибка при получении индексов документов")
+                raise ValueError("Error fetching collection IDs :(")
 
-            print(f"Количество документов в базе: {len(existing_ids)}")
-            print("Фильтрация...")
-
+            print(f"Number of docs found: {len(existing_ids)}")
             existing_ids = set(existing_ids)
             upload_ids = docs_ids - existing_ids
 
-            print(f"Будет загружено: {len(upload_ids)} документов")
+            print(f"{len(upload_ids)} docs will be created")
             seen = set()
             upload_docs = []
             for doc in docs:
@@ -126,15 +117,15 @@ class Importer(ApiEngine):
         del data
 
         if len(upload_docs) == 0:
-            print("Нет документов :(")
+            print("No documents to import :(")
             return
 
-        print("Запуск импорта с параметрами:")
-        print(f"Импорт из: [bold]{path}")
-        print(f"Размер батча: [bold]{batch_size}")
-        print(f"Коллекция: [bold]{self.collection}")
+        print("Begin import with params:")
+        print(f"Source file: [bold]{path}")
+        print(f"Batch size: [bold]{batch_size}")
+        print(f"Collection: [bold]{self.collection}")
 
-        confirm = input("Всё верно? (y/n)").lower() == "y"
+        confirm = input("Correct? (y/n)").lower() == "y"
         if not confirm:
             print("[red]Отмена...")
             return
@@ -148,13 +139,12 @@ class Importer(ApiEngine):
             TextColumn("({task.completed})"),
             TimeRemainingColumn(),
         ) as progress:
-            task = progress.add_task("Загрузка...", total=num_docs)
+            task = progress.add_task("Uploading...", total=num_docs)
 
             for batch_docs in chunked(upload_docs, batch_size):
                 try:
                     await self._post_documents(docs=batch_docs)
                 except Exception:
-
                     print("[red]Ошибка :)")
 
                 progress.update(task, advance=batch_size)
@@ -163,17 +153,9 @@ class Importer(ApiEngine):
         url = f"/api/cluster/configs/{name}?omitHeader=true"
         r = await self.api_request(method="DELETE", path=url)
         if r is None:
-            raise ValueError("Ошибка во время удаления конфига :(")
+            raise ValueError("Error deleting config :(")
 
-        print(r)
-
-    async def _remove_config(self, name: str):
-        url = f"/api/cluster/configs/{name}?omitHeader=true"
-        r = await self.api_request(method="DELETE", path=url)
-        if r is None:
-            raise ValueError("Ошибка во время удаления конфига :(")
-
-        print(r)
+        print("[green]Ok")
 
     async def import_configs(
         self,
@@ -181,18 +163,18 @@ class Importer(ApiEngine):
         overwrite: bool = False,
         name: Optional[str] = None,
     ):
-        """Импорт конфига
+        """Import config
 
         Args:
-            configs_path (Union[str, pathlib.Path]): папка в которой находятся файлы конфига
-            overwrite (bool, optional): нужно ли переписывать уже существующий конфиг с таким именем
+            configs_path (Union[str, pathlib.Path]): folder with config root
+            overwrite (bool, optional): overwrite currently existing config with the same name
                 Defaults to False.
-            name (Optional[str], optional): имя конфига для создания.
-                Если None - будет использовано название папки
+            name (Optional[str], optional): create config with this name
+                if `None` - source folder name will be used
                 Defaults to None.
 
         Raises:
-            ValueError: Ошибка импорта конфига
+            ValueError: Error importing config
         """
         import io
         import zipfile
@@ -206,23 +188,20 @@ class Importer(ApiEngine):
         if name is None:
             name = configs_path.name
 
-        print("Параметры импорта:")
-        print(f"Конфиг: [bold]{name}[/bold]")
-        print(f"Перезапись: [bold]{overwrite}[/bold]")
-        print(f"Путь импорта: [bold]{configs_path.absolute().__str__()}[/bold]")
+        print("Import params:")
+        print(f"Source config: [bold]{name}[/bold]")
+        print(f"Overwrite: [bold]{overwrite}[/bold]")
 
-        confirm = input("Все верно? (y/n)")
+        confirm = input("Correct? (y/n)")
         if confirm.lower() != "y":
-            print("[red]Отмена...")
+            print("[red]Stopping...")
             return
 
-        print("Запуск импорта...")
-
         if overwrite:
-            print("Удаление старого конфига...")
+            print("Removing old config...", end=" ")
             await self._remove_config(name=name)
 
-        print("Загрузка нового...")
+        print("Creating new config...")
         upload_url = "/solr/admin/configs"
         params = dict(
             action="UPLOAD", name=name, overwrite=overwrite_str, cleanup=cleanup_str
@@ -239,6 +218,6 @@ class Importer(ApiEngine):
                 method="POST", path=upload_url, params=params, data=f
             )
             if resp is None:
-                raise ValueError("Ошибка при отправке файла :(")
+                raise ValueError("Error sending config .zip archive :(")
 
-        print("[bold green]Импорт успешно завершен!")
+        print("[bold green]Done!")

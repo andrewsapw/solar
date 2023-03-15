@@ -8,7 +8,7 @@ import orjson
 from rich import print
 from rich.progress import Progress
 
-from solrdumper.base import ApiEngine
+from solar.base import ApiEngine
 
 logger = logging.getLogger("root")
 
@@ -27,16 +27,20 @@ class Exporter(ApiEngine):
     async def _get_documents(
         self, query: str, start_row: int, rows: int, nested: bool
     ) -> List[dict]:
-        """Получение документов по списку их ID
+        """Fetch documents by `query`
 
         Args:
-            ids (List[str]): массив ID документов коллекции
+            query (List[dict]): `query` for Solr
+            start_row (int): index of first document to fetch
+            rows (int): number of documents to fetch
+            nested (bool): fetch nested documents or not
+                if True - adds `fl=*, [child limit=-1]` to query params
 
         Raises:
-            ValueError: Ошибка при получении документов
+            ValueError: Error fetching documents
 
         Returns:
-            List[dict]: массив документов
+            List[dict]: array of collection documents
         """
         url_path = f"/solr/{self.collection}/select"
         params = {
@@ -51,27 +55,27 @@ class Exporter(ApiEngine):
         content = await self.api_request(path=url_path, params=params, method="GET")
 
         if content is None:
-            logger.error(f"Error fetching document {id} ({self.collection=})")
-            raise ValueError("Ошибка при получении документов")
+            print(f"[red]Error fetching document {id} ({self.collection=})")
+            raise ValueError(f"Error fetching document {id} ({self.collection=})")
 
         data = orjson.loads(content)  # type: ignore
         doc = data["response"]["docs"]
         return doc
 
-    async def _export_ids(
+    async def _export_to_path(
         self,
         query: str,
-        ids: List[str],
         path: str,
         nested: bool,
         batch_size: int = 100,
-    ) -> pathlib.Path:
-        """Сохраняет документы с нужными ID (`ids`) в путь `path`
+    ) -> Optional[pathlib.Path]:
+        """Export documents to .json file in `path`
 
         Args:
-            ids (List[str]): массив ID документов коллекции
-            path (str): путь, в который запишется итоговый .json файл с документами
-            batch_size (int, optional): размер батча, с которым буду скачиваться документы из Solr
+            query (str): `q` parameter to fetch docs from Solr
+            path (str): path to save result `.json` file
+            batch_size (int, optional): batch size.
+                Specifies how many documents will be fetched by one request
                 Defaults to 10.
 
         Returns:
@@ -85,23 +89,21 @@ class Exporter(ApiEngine):
             date=today_str,
             docs=[],
         )
-        num_ids = len(ids)
 
-        logger.info("Scrapping docs...")
+        ids = await self._fetch_ids(query=query)
+        if ids is None:
+            print("[red]Error fetching documents IDs")
+            return
+
+        num_ids = len(ids)
         with Progress() as progress:
-            task = progress.add_task("Скачивание...", total=num_ids)
+            task = progress.add_task("Downloading...", total=num_ids)
             for from_idx in range(0, num_ids, batch_size):
                 docs = await self._get_documents(
                     start_row=from_idx, rows=batch_size, query=query, nested=nested
                 )
-                data["docs"] += docs
+                data["docs"] += docs  # type: ignore
                 progress.update(task, advance=batch_size)
-
-            # tasks.append(docs)
-
-        # for r in tqdm.asyncio.tqdm.as_completed(tasks):
-        #     batch_data = await r
-        #     data["docs"] += batch_data
 
         file_directory = pathlib.Path(path)
         if not file_directory.exists():
@@ -115,38 +117,28 @@ class Exporter(ApiEngine):
 
     async def export_data(
         self, path: str, query: str = "*:*", nested: bool = False
-    ) -> pathlib.Path:
-        """Экспорт данных из Solr в заданный путь (`path`),
-        фильтруя по `query`
+    ) -> Optional[pathlib.Path]:
+        """Export Solr collection to `path`
 
         Args:
-            path (str): путь, в который запишется итоговый файл с данными
-            query (str, optional): query запрос в SOlr, с помощью которого соберутся ID документов
+            path (str): path to save result `.json` file
+            query (str, optional): `q` parameter to fetch docs from Solr
                 Defaults to "*:*".
 
-        Raises:
-            ValueError: Ошибка при получении индексов документов
-
         Returns:
-            pathlib.Path: путь до итогового файла
+            Optional[pathlib.Path]: result `.json` path
         """
-        ids = await self._fetch_ids(query=query)
-        if ids is None:
-            raise ValueError("Ошибка при получении индексов документов")
+        print(f"Export nested documents: {nested}")
 
-        print(f"Количество документов для экспорта: {len(ids)}")
-        print(f"Экспорт вложенных документов: {nested}")
-        filepath = await self._export_ids(
-            ids=ids, path=path, query=query, nested=nested
-        )
+        filepath = await self._export_to_path(path=path, query=query, nested=nested)
 
         return filepath
 
     async def export_config(self, path: Union[str, pathlib.Path]):
-        """Экспорт конфигов из Solr
+        """Export configs from Solr
 
         Args:
-            path (Union[str, pathlib.Path]): путь до папки, в которую запишутся конфиги
+            path (Union[str, pathlib.Path]): folder path to save configs to.
         """
         if isinstance(path, str):
             path = pathlib.Path(path)
@@ -157,7 +149,7 @@ class Exporter(ApiEngine):
         url = "/solr/admin/zookeeper?detail=true&path=/configs/&wt=json"
         resp: dict = await self.api_request(path=url)  # type: ignore
         if resp is None:
-            logger.error("Ошибка при получении списка конфигов")
+            print("[red]Error fetching configs :(")
             return
 
         tree = resp["tree"][0]["children"]
@@ -165,7 +157,7 @@ class Exporter(ApiEngine):
         await self._parse_tree(tree=tree, folder=path)
 
     async def _parse_tree(self, tree: list, folder: pathlib.Path):
-        """Рекурсивный парсинг дерева файлов Zookeeper"""
+        """Recursive Zookeeper file tree parsing"""
         for el in tree:
             if isinstance(el, list):
                 await self._parse_tree(el, folder=folder)
@@ -188,7 +180,7 @@ class Exporter(ApiEngine):
                 )
                 if resp is None:
                     raise ValueError(
-                        f"Ошибка во время получения тела файла: {filename} [{content_url}] ({el})"
+                        f"Error fetching document body: {filename} [{content_url}] ({el})"
                     )
 
                 assert isinstance(resp, dict)
