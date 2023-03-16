@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import pathlib
 import time
 from typing import List, Optional, Union
@@ -30,17 +31,22 @@ def recursive_field_remove(doc: dict, field: str):
 class Importer(ApiEngine):
     """Class with *import* methods"""
 
-    def _load_json(self, path: str):
+    def _load_json(self, path: Union[str, pathlib.Path]):
         """Load source `.json` file"""
 
-        with open(path, "r", encoding="UTF-8") as f:
+        if isinstance(path, pathlib.Path):
+            path_str = path.absolute().__str__()
+        else:
+            path_str = path
+            
+        with open(path_str, "r", encoding="UTF-8") as f:
             data = json.load(f)
 
         if self.collection is None:
             self.collection = data["collection"]
         return data
 
-    async def _post_documents(self, docs: List[dict]):
+    async def _post_documents(self, docs: List[dict], collection_name: str):
         """Send documents to Solr.
 
         Args:
@@ -54,7 +60,7 @@ class Importer(ApiEngine):
             doc.pop("_version_", None)
             doc = recursive_field_remove(doc, "_root_")
 
-        url_path = f"/solr/{self.collection}/update"
+        url_path = f"/solr/{collection_name}/update"
         headers = {
             "Content-type": "application/json",
         }
@@ -78,7 +84,11 @@ class Importer(ApiEngine):
         return res
 
     async def import_data(
-        self, path: str, batch_size: int = 50, overwrite: bool = True
+        self,
+        path: Union[str, pathlib.Path],
+        batch_size: int = 50,
+        overwrite: bool = True,
+        collection: Optional[str] = None,
     ):
         """Import data, saved as `.json` file
 
@@ -120,10 +130,15 @@ class Importer(ApiEngine):
             print("No documents to import :(")
             return
 
+        if collection is None:
+            collection_name: str = self.collection
+        else:
+            collection_name = collection
+
         print("Begin import with params:")
         print(f"Source file: [bold]{path}")
         print(f"Batch size: [bold]{batch_size}")
-        print(f"Collection: [bold]{self.collection}")
+        print(f"Collection: [bold]{collection_name}")
 
         confirm = input("Correct? (y/n)").lower() == "y"
         if not confirm:
@@ -143,7 +158,9 @@ class Importer(ApiEngine):
 
             for batch_docs in chunked(upload_docs, batch_size):
                 try:
-                    await self._post_documents(docs=batch_docs)
+                    await self._post_documents(
+                        docs=batch_docs, collection_name=collection_name
+                    )
                 except Exception:
                     print("[red]Ошибка :)")
 
@@ -156,6 +173,12 @@ class Importer(ApiEngine):
             raise ValueError("Error deleting config :(")
 
         print("[green]Ok")
+
+    async def create_collection(self, collection_name: str, config_name: str):
+        url = f"/solr/admin/collections?action=CREATE&name={collection_name}&numShards=1&replicationFactor=1&maxShardsPerNode=1&collection.configName={config_name}"
+        r = await self.api_request(path=url)
+        if r is None:
+            raise ValueError("Error creating collection :(")
 
     async def import_configs(
         self,
@@ -195,7 +218,7 @@ class Importer(ApiEngine):
         confirm = input("Correct? (y/n)")
         if confirm.lower() != "y":
             print("[red]Stopping...")
-            return
+            os._exit(1)
 
         if overwrite:
             print("Removing old config...", end=" ")

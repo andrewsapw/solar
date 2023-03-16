@@ -9,6 +9,7 @@ from rich import print
 from rich.progress import Progress
 
 from solar.base import ApiEngine
+from solar.types.config_files import ConfigFiles
 
 logger = logging.getLogger("root")
 
@@ -65,9 +66,10 @@ class Exporter(ApiEngine):
     async def _export_to_path(
         self,
         query: str,
-        path: str,
+        path: Union[str, pathlib.Path],
         nested: bool,
         batch_size: int = 100,
+        name: Optional[str] = None,
     ) -> Optional[pathlib.Path]:
         """Export documents to .json file in `path`
 
@@ -105,18 +107,30 @@ class Exporter(ApiEngine):
                 data["docs"] += docs  # type: ignore
                 progress.update(task, advance=batch_size)
 
-        file_directory = pathlib.Path(path)
+        if isinstance(path, str):
+            file_directory = pathlib.Path(path)
+        else:
+            file_directory = path
+
         if not file_directory.exists():
             file_directory.mkdir()
 
-        filepath = file_directory / f"{self.collection}_{today_str}.json"
+        if name is None:
+            filepath = file_directory / f"{self.collection}_{today_str}.json"
+        else:
+            filepath = file_directory / name
+
         with open(filepath, "w", encoding="UTF-8") as f:
             f.write(orjson.dumps(data).decode("utf-8"))  # type: ignore
 
         return filepath
 
     async def export_data(
-        self, path: str, query: str = "*:*", nested: bool = False
+        self,
+        path: Union[str, pathlib.Path],
+        query: str = "*:*",
+        nested: bool = False,
+        name: Optional[str] = None,
     ) -> Optional[pathlib.Path]:
         """Export Solr collection to `path`
 
@@ -130,15 +144,21 @@ class Exporter(ApiEngine):
         """
         print(f"Export nested documents: {nested}")
 
-        filepath = await self._export_to_path(path=path, query=query, nested=nested)
+        filepath = await self._export_to_path(
+            path=path, query=query, nested=nested, name=name
+        )
 
         return filepath
 
-    async def export_config(self, path: Union[str, pathlib.Path]):
+    async def export_config(
+        self, path: Union[str, pathlib.Path], collection_name: str
+    ) -> Optional[pathlib.Path]:
         """Export configs from Solr
 
         Args:
             path (Union[str, pathlib.Path]): folder path to save configs to.
+            config_name (Optional[str]): config name to export.
+                If None - export all configs
         """
         if isinstance(path, str):
             path = pathlib.Path(path)
@@ -146,48 +166,60 @@ class Exporter(ApiEngine):
         if not path.exists():
             path.mkdir()
 
-        url = "/solr/admin/zookeeper?detail=true&path=/configs/&wt=json"
-        resp: dict = await self.api_request(path=url)  # type: ignore
+        # url = "/solr/admin/zookeeper?detail=true&path=/configs/&wt=json"
+        url = f"/solr/{collection_name}/admin/file?wt=json"
+
+        resp: Optional[str] = await self.api_request(path=url)
         if resp is None:
-            print("[red]Error fetching configs :(")
-            return
+            raise ValueError("Error fetching config info :(")
 
-        tree = resp["tree"][0]["children"]
+        resp_json: dict = orjson.loads(resp)
 
-        await self._parse_tree(tree=tree, folder=path)
+        config_files = ConfigFiles(**resp_json)
 
-    async def _parse_tree(self, tree: list, folder: pathlib.Path):
+        await self._parse_tree(
+            tree=config_files, folder=path, config_name=collection_name
+        )
+        return path
+
+    async def _parse_tree(
+        self, tree: ConfigFiles, folder: pathlib.Path, config_name: Optional[str]
+    ):
         """Recursive Zookeeper file tree parsing"""
-        for el in tree:
-            if isinstance(el, list):
-                await self._parse_tree(el, folder=folder)
-            elif isinstance(el, dict) and "children" in el:
-                folder_name: str = el["text"]
-                childrens = el["children"]
+        for filename, fileinfo in tree.files.items():
+            if fileinfo.directory:
+                url = f"/solr/{config_name}/admin/file?file={filename}&wt=json"
+                resp = await self.api_request(path=url)
+                if resp is None:
+                    raise ValueError(f"Error fetching dir {filename} files")
 
-                folder_path: pathlib.Path = folder / folder_name
+                data: dict = orjson.loads(resp)
+                dir_files = ConfigFiles(**data)
+                dir_folder = folder / filename
+                if not dir_folder.exists():
+                    dir_folder.mkdir()
 
-                if not folder_path.exists():
-                    folder_path.mkdir()
-                await self._parse_tree(tree=childrens, folder=folder_path)
+                dir_files.path += f"{filename}/"
 
-            elif isinstance(el, dict) and "children" not in el:
-                filename = el["text"]
+                await self._parse_tree(
+                    tree=dir_files, folder=dir_folder, config_name=config_name
+                )
 
-                content_url = f'/solr/{el["a_attr"]["href"]}'
-                resp = await self.api_request(
-                    path=content_url,
+            else:
+                file_path: pathlib.Path = folder / filename
+
+                if tree.path:
+                    url = f"/solr/{config_name}/admin/file?file={tree.path}{filename}&wt=json"
+                else:
+                    url = f"/solr/{config_name}/admin/file?file={filename}&wt=json"
+
+                resp: Optional[str] = await self.api_request(
+                    path=url,
                 )
                 if resp is None:
-                    raise ValueError(
-                        f"Error fetching document body: {filename} [{content_url}] ({el})"
-                    )
+                    raise ValueError(f"Error fetching document body: {filename}")
 
-                assert isinstance(resp, dict)
-                content: str = resp["znode"]["data"]  # type: ignore
-                self._write_file(path=folder / filename, content=content)
-            elif isinstance(el, str):
-                continue
+                self._write_file(path=folder / filename, content=resp)
 
     def _write_file(self, path: pathlib.Path, content: str):
         with open(path, "w", encoding="UTF-8") as f:

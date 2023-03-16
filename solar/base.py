@@ -1,8 +1,11 @@
+import json
 import logging
 from typing import List, Optional
 
 import aiohttp
 import orjson
+
+from solar.types.cluster_status import ClusterStatus
 
 # requests.packages.urllib3.disable_warnings()  # type: ignore
 logger = logging.getLogger("root")
@@ -120,3 +123,39 @@ class ApiEngine:
             except UnicodeDecodeError as e:
                 print("Can't decode answer :( {e}")
                 return None
+
+    async def remove_collection(self, collection_name: str):
+        url = f"/solr/admin/collections?action=DELETE&name={collection_name}"
+        await self.api_request(path=url)
+
+    async def reload_collection(self, collection_name: str):
+        url = f"/solr/admin/collections?action=RELOAD&name={collection_name}"
+        await self.api_request(path=url)
+
+    async def cluster_status(self) -> ClusterStatus:
+        url = f"/solr/admin/collections?action=CLUSTERSTATUS&wt=json"
+        status = await self.api_request(
+            path=url,
+        )
+        if status is None:
+            raise ValueError("Error getting cluster status")
+
+        status = json.loads(status)
+        status_model = ClusterStatus(**status)
+        return status_model
+
+    async def create_alias(self, alias_name: str, collections: List[str]):
+        url = "/solr/admin/collections?action=CREATEALIAS"
+        params = dict(name=alias_name, collections=",".join(collections))
+
+        resp = await self.api_request(path=url, params=params)
+        if resp is None:
+            raise ValueError(f"Error creating alias {alias_name}")
+
+    async def remove_alias(self, alias_name: str):
+        url = "/solr/admin/collections?action=DELETEALIAS"
+        params = dict(name=alias_name)
+
+        resp = await self.api_request(path=url, params=params)
+        if resp is None:
+            raise ValueError(f"Error removing alias {alias_name}")
