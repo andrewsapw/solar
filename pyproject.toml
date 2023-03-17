@@ -1,10 +1,13 @@
 [tool.poetry]
-name = "solar"
+name = "solar-cli"
 version = "0.1.0"
 description = "CLI app for Solr"
 authors = ["Andrey S. <andrewsapw@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+packages = [
+    { include = "solar" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"

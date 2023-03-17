@@ -4,3 +4,4 @@ build
 configs
 .vscode
 **/__pycache__
+dist
