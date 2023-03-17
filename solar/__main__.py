@@ -22,11 +22,12 @@ def coro(f):
 
 
 @click.group()
-@click.option("-q", "--query", help="Solr query", default="*:*")
+@click.option("-q", "--query", help="Solr query. Default: *:*", default="*:*")
 @click.argument("URL", nargs=1)
 @click.option("-c", "--collection", default=None)
 @click.pass_context
 def cli(ctx, query: str, collection: str, url: str):
+    """Solr CLI"""
     url_parsed = urllib.parse.urlparse(url)
     if url_parsed.scheme not in ("http", "https"):
         print(f"[red]Unknown scheme {url_parsed.scheme}")
@@ -50,6 +51,7 @@ def cli(ctx, query: str, collection: str, url: str):
 @click.pass_context
 @coro
 async def remove_config(ctx, name):
+    """Remove config from Solr"""
     ctx.ensure_object(dict)
     importer = Importer(
         base_url=ctx.obj["url"],
@@ -70,11 +72,11 @@ async def remove_config(ctx, name):
 
 @cli.command(name="import")
 @click.argument("filepath")
-@click.option("--batch", default=50)
+@click.option("--batch", help="Batch size to import docs with. Default: 50", default=50)
 @click.pass_context
 @coro
 async def import_data(ctx, filepath, batch):
-    print(f"Importing data from [bold]{filepath}[/bold]")
+    """Import data to Solr"""
     ctx.ensure_object(dict)
     importer = Importer(
         base_url=ctx.obj["url"],
@@ -102,6 +104,7 @@ async def import_data(ctx, filepath, batch):
 @click.option("--name", default=None)
 @coro
 async def import_config(ctx, directory, overwrite, name):
+    """Import config to Solr"""
     ctx.ensure_object(dict)
     importer = Importer(
         base_url=ctx.obj["url"],
@@ -130,7 +133,7 @@ async def import_config(ctx, directory, overwrite, name):
 @click.pass_context
 @coro
 async def export_data(ctx, directory, nested: bool):
-    print(f"Экспорт данных в [bold]{directory}[/bold]")
+    """Export data from Solr"""
     ctx.ensure_object(dict)
     if ctx.obj["collection"] is None:
         print("[bold red]Параметр collection должен быть задан")
@@ -152,13 +155,13 @@ async def export_data(ctx, directory, nested: bool):
 
 
 @cli.command(name="export-config")
-@click.option("--name", default=None, help="Config name")
 @click.argument("directory")
 @click.pass_context
 @coro
 async def export_configs(ctx, name, directory):
-    if name is None:
-        print("[red]--name is required")
+    """Export config from Solr"""
+    if ctx.obj["collection"] is None:
+        print("[red]-c is required")
         return
 
     print(f"Экспорт конфигов в [bold]{directory}[/bold]")
@@ -171,7 +174,9 @@ async def export_configs(ctx, name, directory):
     )
     try:
         await exporter.build_client()
-        await exporter.export_config(path=directory, collection_name=name)
+        await exporter.export_config(
+            path=directory, collection_name=ctx.obj["collection"]
+        )
     finally:
         await exporter.close_client()
 
@@ -183,6 +188,7 @@ async def export_configs(ctx, name, directory):
 @click.pass_context
 @coro
 async def reindex_collection(ctx, config_path, config_name, directory):
+    """Reindex collection"""
     work_dir = pathlib.Path(directory)
     if not work_dir.exists():
         work_dir.mkdir()
