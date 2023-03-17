@@ -66,7 +66,7 @@ solar -c "https://<username>:<password>@localhost:8333" import-config --name "pr
 This will create config `product-v2`.
 
 Also, we can overwrite existing config with `--overwrite` flag
-> This flag will add `cleanup=true` and `overwrite=true` params to request for creating config. However it is recommended to create config with the *new* name, because in some cases, Solr caches fields types, and some changes of new config will not be applied. Goog practice is version control your configs and name them with version identifier (commit hash, for example)  
+> This flag will add `cleanup=true` and `overwrite=true` params to request for creating config. However it is recommended to create config with the *new* name, because in some cases, Solr caches fields types, and some changes of new config will not be applied. Goog practice is version control your configs and name them with version identifier (commit hash, for example)
 > Using this flag also requires that no collections is linked to this config
 
 ```sh

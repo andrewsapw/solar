@@ -8,7 +8,7 @@ import orjson
 from rich import print
 from rich.progress import Progress
 
-from solar.base import ApiEngine
+from solar.api.base import ApiEngine
 from solar.types.config_files import ConfigFiles
 
 logger = logging.getLogger("root")

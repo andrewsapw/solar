@@ -15,7 +15,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from solar.base import ApiEngine
+from solar.api.base import ApiEngine
 
 logger = logging.getLogger("root")
 
@@ -38,7 +38,7 @@ class Importer(ApiEngine):
             path_str = path.absolute().__str__()
         else:
             path_str = path
-            
+
         with open(path_str, "r", encoding="UTF-8") as f:
             data = json.load(f)
 
