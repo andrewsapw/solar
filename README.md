@@ -8,6 +8,8 @@ This CLI tool provides help with some routine Solr operations:
 
 # Usage
 
+> Python version >=3.8 required
+
 `pip install solar-cli`
 
 # Export
