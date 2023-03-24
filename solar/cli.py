@@ -59,7 +59,7 @@ async def remove_config(ctx, name):
         password=ctx.obj["password"],
     )
     try:
-        confirm = input(f"Вы точно хотите удалить конфиг {name}").lower() == "y"
+        confirm = input(f"You sure you want to delete config {name}?").lower() == "y"
         if not confirm:
             return
 
