@@ -42,12 +42,12 @@ This will all config files to local folder `./configs`
 
 Later, we can import previously exported data with `import` command, and `./data/<collection>.json` as source file:
 ```sh
-solar "https://<username>:<password>@localhost:8333" export ./data/<collection>.json
+solar "https://<username>:<password>@localhost:8333" import ./data/<collection>.json
 ```
 
 We do not have to specify collection name, source `.json` already have collection name. However, if we want to import data as collection with different name, we can set this with `-c` flag:
 ```sh
-solar -c "<new collection name>" "https://<username>:<password>@localhost:8333" export ./data/<collection>.json
+solar -c "<new collection name>" "https://<username>:<password>@localhost:8333" import ./data/<collection>.json
 ```
 
 ## Import config
