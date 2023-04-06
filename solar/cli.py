@@ -7,6 +7,7 @@ from functools import wraps
 import click
 from rich import print
 
+from solar.api.base import ApiEngine
 from solar.api.export import Exporter
 from solar.api.import_ import Importer
 from solar.types.cluster_status import Collection
@@ -161,6 +162,34 @@ async def reindex_collection(ctx, config_path, config_name, directory):
     finally:
         await importer.close_client()
         await exporter.close_client()
+
+
+@cli.command(name="analyzer-step")
+@click.argument("field")
+@click.argument("analyzer")
+@click.argument("text")
+@click.pass_context
+@coro
+async def analyzer_step(ctx, field, analyzer, text):
+    """Remove config from Solr"""
+    ctx.ensure_object(dict)
+
+    if ctx.obj["collection"] is None:
+        print("[red]Missing --collection flag")
+        return
+
+    engine = ApiEngine(
+        base_url=ctx.obj["url"],
+        collection=ctx.obj["collection"],
+        username=ctx.obj["username"],
+        password=ctx.obj["password"],
+    )
+    try:
+        await engine.build_client()
+        result = await engine.analyzer_step(field=field, analyzer=analyzer, text=text)
+        print(result)
+    finally:
+        await engine.close_client()
 
 
 if __name__ == "__main__":

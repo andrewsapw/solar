@@ -4,7 +4,9 @@ from typing import List, Optional
 
 import aiohttp
 import orjson
+from more_itertools import chunked
 
+from solar.types.analysis import AnalysisModel
 from solar.types.cluster_status import ClusterStatus
 
 # requests.packages.urllib3.disable_warnings()  # type: ignore
@@ -159,3 +161,36 @@ class ApiEngine:
         resp = await self.api_request(path=url, params=params)
         if resp is None:
             raise ValueError(f"Error removing alias {alias_name}")
+
+    async def analyzer_step(self, field: str, analyzer: str, text: str):
+        url = f"/solr/{self.collection}/analysis/field"
+        params = {
+            "analysis.fieldname": field,
+            "analysis.fieldvalue": text,
+            "analysis.showmatch": "false",
+            "verbose_output": 0,
+        }
+        resp = await self.api_request(path=url, params=params)
+        if resp is None:
+            raise ValueError("Error fetching analysis result")
+
+        data = json.loads(resp)
+        analysis = AnalysisModel(**data)
+
+        parsed_tokens = []
+        for step_name, result in chunked(
+            analysis.analysis.field_names.content.index, 2
+        ):
+            if analyzer not in step_name:
+                continue
+
+            if isinstance(result, str):
+                analyzer_result = result
+                return analyzer_result
+
+            for i in result:
+                token = i["text"]
+                parsed_tokens.append(token)
+
+        analyzer_result = " ".join(parsed_tokens)
+        return analyzer_result
