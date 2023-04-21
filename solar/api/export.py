@@ -68,7 +68,7 @@ class Exporter(ApiEngine):
         query: str,
         path: Union[str, pathlib.Path],
         nested: bool,
-        batch_size: int = 100,
+        batch_size: int = 10,
         name: Optional[str] = None,
     ) -> Optional[pathlib.Path]:
         """Export documents to .json file in `path`
@@ -131,6 +131,7 @@ class Exporter(ApiEngine):
         query: str = "*:*",
         nested: bool = False,
         name: Optional[str] = None,
+        batch_size: Optional[int] = 50,
     ) -> Optional[pathlib.Path]:
         """Export Solr collection to `path`
 
@@ -143,9 +144,10 @@ class Exporter(ApiEngine):
             Optional[pathlib.Path]: result `.json` path
         """
         print(f"Export nested documents: {nested}")
+        print(f"Batch size: {batch_size}")
 
         filepath = await self._export_to_path(
-            path=path, query=query, nested=nested, name=name
+            path=path, query=query, nested=nested, name=name, batch_size=batch_size
         )
 
         return filepath

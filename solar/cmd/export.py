@@ -14,9 +14,15 @@ from solar.cli import cli, coro
     default=False,
     help="Export nested documents. Default: False",
 )
+@click.option(
+    "--batch",
+    type=int,
+    default=50,
+    help="Batch size",
+)
 @click.pass_context
 @coro
-async def export_data(ctx, directory, nested: bool):
+async def export_data(ctx, directory, nested: bool, batch: int):
     """Export data from Solr"""
     ctx.ensure_object(dict)
     if ctx.obj["collection"] is None:
@@ -32,7 +38,7 @@ async def export_data(ctx, directory, nested: bool):
     try:
         await exporter.build_client()
         await exporter.export_data(
-            path=directory, query=ctx.obj["query"], nested=nested
+            path=directory, query=ctx.obj["query"], nested=nested, batch_size=batch
         )
     finally:
         await exporter.close_client()
