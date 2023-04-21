@@ -66,6 +66,8 @@ async def remove_config(ctx, name):
 
         await importer.build_client()
         await importer._remove_config(name=name)
+    except Exception:
+        return
     finally:
         await importer.close_client()
 
@@ -158,7 +160,8 @@ async def reindex_collection(ctx, config_path, config_name, directory):
         print(f"Importing data to collection [bold]{collection_name}")
         await importer.import_data(path=tmp_data_path, collection=collection_name)
         print("[green]Success")
-
+    except Exception:
+        return
     finally:
         await importer.close_client()
         await exporter.close_client()
@@ -188,6 +191,8 @@ async def analyzer_step(ctx, field, analyzer, text):
         await engine.build_client()
         result = await engine.analyzer_step(field=field, analyzer=analyzer, text=text)
         print(result)
+    except Exception:
+        return
     finally:
         await engine.close_client()
 

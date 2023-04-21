@@ -40,6 +40,8 @@ async def export_data(ctx, directory, nested: bool, batch: int):
         await exporter.export_data(
             path=directory, query=ctx.obj["query"], nested=nested, batch_size=batch
         )
+    except Exception:
+        return
     finally:
         await exporter.close_client()
 
@@ -68,5 +70,7 @@ async def export_configs(ctx, directory):
             path=directory, collection_name=ctx.obj["collection"]
         )
         print("[green]Done!")
+    except Exception:
+        return
     finally:
         await exporter.close_client()

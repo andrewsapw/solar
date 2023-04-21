@@ -21,6 +21,8 @@ async def import_data(ctx, filepath, batch):
     try:
         await importer.build_client()
         await importer.import_data(path=filepath, batch_size=batch)
+    except Exception:
+        return
     finally:
         await importer.close_client()
 
@@ -51,5 +53,7 @@ async def import_config(ctx, directory, overwrite, name):
         await importer.import_configs(
             configs_path=directory, overwrite=overwrite, name=name
         )
+    except Exception:
+        return
     finally:
         await importer.close_client()
